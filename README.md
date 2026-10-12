@@ -4,6 +4,10 @@ Version **1.0.0** — the first GitHub release of Stackd, including friends and 
 
 A private, mobile-friendly cash-game ledger for personal play and host-managed home games.
 
+## User documentation
+
+Read the [user guide](docs/USER_GUIDE.md) for getting started, hosting and joining games, managing friends, recording amounts, and understanding your results.
+
 ## Developer documentation
 
 See the [developer guide](docs/DEVELOPMENT.md) for setup, architecture, the data model, API reference, access rules, testing, migrations, and deployment.
