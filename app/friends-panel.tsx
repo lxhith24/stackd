@@ -26,7 +26,7 @@ export default function FriendsPanel({state}: {state:ReturnType<typeof useFriend
   </div>;
  }
  return <>
-  <div className="pagehead"><div><h1>Your friends.</h1><p className="muted">Find your players and get the next table together.</p></div></div>
+  <div className="pagehead"><div><h1>Gang</h1></div></div>
   <div className="friends-grid">
    <section className="panel form-stack">
     <h2>Add a friend</h2>
@@ -35,7 +35,6 @@ export default function FriendsPanel({state}: {state:ReturnType<typeof useFriend
      <label className="field"><span>Enter another player’s code</span><input required inputMode="numeric" pattern="[0-9]{4}" maxLength={4} value={code} onChange={e=>setCode(e.currentTarget.value.replace(/\D/g,''))} placeholder="0000"/></label>
      <button className="primary-btn add-player-btn" disabled={socialBusy||code.length!==4}><UserPlus size={16}/>Add friend</button>
     </form>
-    <p className="metadata">Each player receives a code after signing in once.</p>
    </section>
    <div className="form-stack">
     {socialError&&<p className="error-banner" role="alert">{socialError}<button className="text-btn" disabled={socialBusy} onClick={()=>void update()}>Retry</button></p>}
