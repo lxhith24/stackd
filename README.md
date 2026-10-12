@@ -1,4 +1,6 @@
-# Stackd
+# Stackd v1
+
+Version **1.0.0** — the first GitHub release of Stackd, including friends and shared sessions.
 
 A private, mobile-friendly cash-game ledger for personal play and host-managed home games.
 
@@ -6,7 +8,7 @@ A private, mobile-friendly cash-game ledger for personal play and host-managed h
 
 - ChatGPT sign-in and durable cloud records, available across devices with the same account.
 - Personal or group sessions, one active hosted session at a time, and historical entry.
-- Unique four-digit friend codes, friend requests, and adding accepted friends to a group.
+- A dedicated Friends tab with unique four-digit friend codes, friend lists and requests, plus adding accepted friends to a group.
 - Shareable group invite links with ChatGPT sign-in and explicit joining. Friendship is optional for invite joins.
 - Participants see only their own amounts and registered player names; only the host can edit.
 - Start date is required; exact start/end times are optional. Rebuy times are recorded automatically.
@@ -14,6 +16,8 @@ A private, mobile-friendly cash-game ledger for personal play and host-managed h
 - Host-only editing, session deletion with confirmation, and group balance checks.
 - Personal dashboard, cumulative results, hourly result, date/venue filtering.
 - CSV session and transaction exports, plus a copyable session summary.
+- INR selected by default for new users; new sessions default to hosting a group.
+- Texas Hold’em sessions with a streamlined player-first form.
 - Name/currency setup, one fixed ledger currency, integer minor-unit amounts.
 
 Offline entry, tournaments, payments, expenses and bankroll transfers are outside this version.
@@ -34,6 +38,7 @@ For a fresh local database, first run `npm run build`, then:
 
 ```
 node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0000_massive_the_anarchist.sql
+node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0001_nebulous_pandemic.sql
 ```
 
 Apply a migration once per database. Production migrations are applied by Sites on publication. Never edit an applied migration; generate a new migration after schema changes with `npm run db:generate`.
@@ -50,7 +55,7 @@ For API integration checks, run `npm start -- --port 5180`, then `node tests/api
 
 ## Data integrity
 
-Sessions, players and individual buy-ins are separate relational tables. Every multi-record save is an atomic D1 batch. Session revision checks protect against stale edits and deletion. Operation IDs make retries idempotent. A database constraint allows only one active session per owner. Cash-out is nullable until known; zero is a real recorded amount. Completed sessions require every cash-out and a positive duration. Group imbalance needs explicit acknowledgment and remains visible.
+Sessions, players and individual buy-ins are separate relational tables. Every multi-record save is an atomic D1 batch. Session revision checks protect against stale edits and deletion. Operation IDs make retries idempotent. A database constraint allows only one active session per owner. Cash-out is nullable until known; zero is a real recorded amount. Completed sessions require every cash-out; when exact start and end times are supplied, the duration must be positive. Group imbalance needs explicit acknowledgment and remains visible.
 
 The personal overview includes completed hosted and joined sessions for the viewer, using their ledger currency. Other currencies remain in history without conversion. Hourly result uses only sessions with both exact times; date-only sessions contribute to profit and counts without inventing a duration. Cash-game costs already reflected in cash-out are not deducted again. Groups use the session's overall start/end time for the host's duration.
 
@@ -60,6 +65,6 @@ Exports include all players. CSV formula prefixes are neutralized. User data is 
 
 `app/ledger-app.tsx` implements the interface. `app/api/` contains authenticated endpoints. `lib/poker.ts` owns calculations, validation and CSV logic. `db/ledger.ts` owns persistence and concurrency checks. `db/schema.ts` plus `drizzle/` own schema migrations.
 
-## V2 validation
+## Multi-user validation
 
 Run `node --experimental-strip-types --test tests/poker.test.mjs` for ledger calculations. Build, apply the SQL migrations to the local database, start the built Worker on 127.0.0.1:5180, then run `node tests/api.test.mjs` and `node --experimental-strip-types tests/social-api.test.mjs`. These use disposable identities only on localhost. They cover cross-account access, participant privacy, invite sign-in return paths, concurrent joins, stale host saves, friend acceptance, membership revocation, link replacement, completed sessions, rate limiting and date-only results. Production migrations are applied by Sites on publication.
