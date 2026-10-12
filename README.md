@@ -4,6 +4,10 @@ Version **1.0.0** — the first GitHub release of Stackd, including friends and 
 
 A private, mobile-friendly cash-game ledger for personal play and host-managed home games.
 
+## Developer documentation
+
+See the [developer guide](docs/DEVELOPMENT.md) for setup, architecture, the data model, API reference, access rules, testing, migrations, and deployment.
+
 ## Features
 
 - ChatGPT sign-in and durable cloud records, available across devices with the same account.
