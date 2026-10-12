@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1791550854049,
+      "tag": "0000_massive_the_anarchist",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1791782859621,
+      "tag": "0001_nebulous_pandemic",
+      "breakpoints": true
+    }
+  ]
+}
