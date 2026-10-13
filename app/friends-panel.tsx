@@ -1,13 +1,22 @@
 'use client';
-import {useState,useEffect} from 'react';
+import {useState,useEffect,useCallback,useRef} from 'react';
 import {UserPlus} from 'lucide-react';
 import {toast} from 'sonner';
 export type FriendItem={id:string;accountId:string;name:string;code:string;status:'pending'|'accepted';incoming:boolean};
 export type SocialData={me:{id:string;name:string;code:string};items:FriendItem[]};
-export function useFriends(){
+export function useFriends(enabled=true){
  const [social,setSocial]=useState<SocialData|null>(null),[socialError,setSocialError]=useState(''),[socialBusy,setSocialBusy]=useState(false);
- async function update(method='GET',body?:unknown){setSocialError('');setSocialBusy(true);try{const r=await fetch('/api/friends',{method,cache:'no-store',headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined}),d=await r.json() as any;if(!r.ok)throw new Error(d.error||'Unable to load friends.');setSocial(d);return true;}catch(e){setSocialError((e as Error).message);return false;}finally{setSocialBusy(false);}}
- useEffect(()=>{void update();},[]);
+ const busyRef=useRef(false);
+ const update=useCallback(async(method='GET',body?:unknown)=>{const mutation=method!=='GET';busyRef.current=true;if(mutation){setSocialError('');setSocialBusy(true);}try{const r=await fetch('/api/friends',{method,cache:'no-store',headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined}),d=await r.json() as SocialData & {error?:string};if(!r.ok)throw new Error(d.error||'Unable to load friends.');setSocial(d);setSocialError('');return true;}catch(e){setSocialError((e as Error).message);return false;}finally{busyRef.current=false;if(mutation)setSocialBusy(false);}},[]);
+ useEffect(()=>{const frame=requestAnimationFrame(()=>{void update();});return()=>cancelAnimationFrame(frame);},[update]);
+ useEffect(()=>{
+  if(!enabled)return;
+  const refresh=()=>{if(document.visibilityState==='visible'&&!busyRef.current)void update();};
+  const timer=setInterval(refresh,15000);
+  window.addEventListener('focus',refresh);
+  document.addEventListener('visibilitychange',refresh);
+  return()=>{clearInterval(timer);window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh);};
+ },[enabled,update]);
  return {social,socialError,socialBusy,update};
 }
 export default function FriendsPanel({state}: {state:ReturnType<typeof useFriends>}) {

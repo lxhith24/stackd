@@ -33,7 +33,7 @@ export default function LedgerApp({email,displayName}:{email:string;displayName:
  const [data,setData]=useState<Ledger>({profile:null,sessions:[]}),[loading,setLoading]=useState(true),[loadError,setLoadError]=useState(''),[error,setError]=useState(''),[saving,setSaving]=useState(false);
  const [tab,setTab]=useState('dashboard'),[selected,setSelected]=useState<string|null>(null),[editor,setEditor]=useState<Draft|null>(null),[isNew,setIsNew]=useState(false),[quick,setQuick]=useState<{s:Session;p:Player;kind:'rebuy'|'cashout'}|null>(null),[quickAmount,setQuickAmount]=useState(''),[quickAt,setQuickAt]=useState(''),[deleting,setDeleting]=useState<Session|null>(null),[imbalance,setImbalance]=useState<Session|null>(null);
  const [from,setFrom]=useState(''),[to,setTo]=useState(''),[venue,setVenue]=useState('all'),[profileName,setProfileName]=useState(displayName),[currency,setCurrency]=useState<Profile['currency']>('INR');
- const socialState=useFriends();
+ const socialState=useFriends(tab==='friends'||tab==='sessions');
  const savingRef=useRef(false),op=useRef({payload:'',id:''});
  const profile=data.profile,sessions=data.sessions,c=profile?.currency??currency,active=sessions.find(s=>s.status==='active'&&s.viewerIsHost!==false),current=sessions.find(s=>s.id===selected),summary=stats(sessions.filter(s=>s.currency===c));
  async function request(url:string,init?:RequestInit){const r=await fetch(url,{...init,headers:{'Content-Type':'application/json',...init?.headers},cache:'no-store'});const body=await r.json() as Ledger & {error?:string};if(!r.ok)throw new Error(body.error||'Unable to connect. Please retry.');return body as Ledger;}
