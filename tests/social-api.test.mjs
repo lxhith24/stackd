@@ -4,7 +4,7 @@ import {writeFile,unlink} from 'node:fs/promises';
 import {spawnSync} from 'node:child_process';
 const base='http://127.0.0.1:5180',host=`social-host-${crypto.randomUUID()}`,player=`social-player-${crypto.randomUUID()}`,other=`social-other-${crypto.randomUUID()}`,stranger=`social-stranger-${crypto.randomUUID()}`,unrelated=`social-unrelated-${crypto.randomUUID()}`;
 const ids=[host,player,other,stranger,unrelated],sessionIds=[];
-async function req(path,method='GET',body,identity=host,origin=base){const r=await fetch(base+path,{method,headers:{'Content-Type':'application/json',...(origin?{Origin:origin}:{}),...(identity?{'oai-authenticated-user-id':identity,'oai-authenticated-user-email':'disposable@sites.test','oai-authenticated-user-full-name':encodeURIComponent(identity),'oai-authenticated-user-full-name-encoding':'percent-encoded-utf-8'}:{})},body:body===undefined?undefined:JSON.stringify(body)});return {status:r.status,body:await r.json()};}
+async function req(path,method='GET',body,identity=host,origin=base){const r=await fetch(base+path,{method,headers:{'Content-Type':'application/json',...(origin?{Origin:origin}:{}),...(identity?{'x-stackd-test-identity':identity,'x-stackd-test-name':encodeURIComponent(identity)}:{})},body:body===undefined?undefined:JSON.stringify(body)});return {status:r.status,body:await r.json()};}
 function session(){return {id:crypto.randomUUID(),revision:0,title:'Disposable shared table',mode:'group',venue:'Home',game:'Holdem',stakes:'10/20',notes:'Host private note',currency:'INR',start:'2026-01-01',end:null,status:'active',players:[{id:crypto.randomUUID(),name:'Host',isSelf:true,cashout:null,entries:[{id:crypto.randomUUID(),kind:'buyin',amount:10000,at:'2026-01-01T12:00:00.000Z'}]},{id:crypto.randomUUID(),name:'Guest',isSelf:false,cashout:null,entries:[{id:crypto.randomUUID(),kind:'buyin',amount:5000,at:'2026-01-01T12:00:00.000Z'}]}]};}
 const save=(s,identity=host)=>req('/api/sessions',s.revision?'PUT':'POST',{session:s,operationId:crypto.randomUUID(),acceptImbalance:true},identity);
 try{
@@ -31,7 +31,7 @@ try{
  assert.equal((await req('/api/invites','POST',{sessionId:s.id},player)).status,404,'only host can create links');
  r=await req('/api/invites','POST',{sessionId:s.id});assert.equal(r.status,200);const token=r.body.token;
  assert.equal((await req(`/api/invites?token=${token}`,'GET',undefined,null)).status,401);
- const anon=await fetch(`${base}/join/${token}`);const html=await anon.text();assert.match(html,/signin-with-chatgpt/);assert.match(html,/return_to=/,'sign-in returns to invite');
+ const anon=await fetch(`${base}/join/${token}`);const html=await anon.text();assert.match(html,/Continue with Google/);assert.ok(html.includes(`/join/${token}`),'sign-in returns to invite');
  assert.equal((await req(`/api/invites?token=${token}`,'GET',undefined,other)).body.joined,false);
  const stale=structuredClone(s);
  const joins=await Promise.all([req('/api/invites','PUT',{token},other),req('/api/invites','PUT',{token},other)]);assert.ok(joins.every(x=>x.status===200),JSON.stringify(joins));
@@ -65,5 +65,5 @@ try{
  console.log('PASS: v2 API checks for unique codes, requests, invites, new-session friend adds, concurrent joins, permissions, privacy, host updates, revocation, date-only sessions and rate limits.');
 }finally{
  const sql=`DELETE FROM sessions WHERE owner IN (${ids.map(x=>`'${x}'`).join(',')});\nDELETE FROM friendships WHERE a IN (${ids.map(x=>`'${x}'`).join(',')}) OR b IN (${ids.map(x=>`'${x}'`).join(',')});\nDELETE FROM profiles WHERE owner IN (${ids.map(x=>`'${x}'`).join(',')});\nDELETE FROM accounts WHERE id IN (${ids.map(x=>`'${x}'`).join(',')});\nDELETE FROM social_limits WHERE key IN (${ids.flatMap(x=>['friend','join'].map(a=>`'${a}:${x}'`)).join(',')});`;
- const path='.sites-runtime/social-test-cleanup.sql';await writeFile(path,sql);const result=spawnSync(process.execPath,['--import','./scripts/sites-env.mjs','./node_modules/wrangler/bin/wrangler.js','d1','execute','DB','--local','--config','dist/server/wrangler.json','--persist-to','.wrangler/state','--file',path],{encoding:'utf8'});await unlink(path);assert.equal(result.status,0,result.stderr);
+ const path='.wrangler/social-test-cleanup.sql';await writeFile(path,sql);const result=spawnSync(process.execPath,['./node_modules/wrangler/bin/wrangler.js','d1','execute','DB','--local','--persist-to','.wrangler/state','--file',path],{encoding:'utf8'});await unlink(path);assert.equal(result.status,0,result.stderr);
 }

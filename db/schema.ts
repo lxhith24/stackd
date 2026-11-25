@@ -7,6 +7,6 @@ export const sessions=sqliteTable('sessions',{
 export const players=sqliteTable('players',{id:text('id').primaryKey(),sessionId:text('session_id').notNull().references(()=>sessions.id,{onDelete:'cascade'}),name:text('name').notNull(),isSelf:integer('is_self').notNull(),cashout:integer('cashout'),accountId:text('account_id')},t=>[index('idx_players_session').on(t.sessionId),uniqueIndex('idx_player_account').on(t.sessionId,t.accountId)]);
 export const entries=sqliteTable('entries',{id:text('id').primaryKey(),sessionId:text('session_id').notNull().references(()=>sessions.id,{onDelete:'cascade'}),playerId:text('player_id').notNull().references(()=>players.id,{onDelete:'cascade'}),kind:text('kind').notNull(),amount:integer('amount').notNull(),at:text('at').notNull()},t=>[index('idx_entries_session').on(t.sessionId)]);
 
-export const accounts=sqliteTable('accounts',{id:text('id').primaryKey(),name:text('name').notNull(),code:text('code').notNull().unique()});
+export const accounts=sqliteTable('accounts',{id:text('id').primaryKey(),name:text('name').notNull(),code:text('code').notNull().unique(),email:text('email').unique(),userId:text('user_id').unique()});
 export const friendships=sqliteTable('friendships',{id:text('id').primaryKey(),a:text('a').notNull(),b:text('b').notNull(),requestedBy:text('requested_by').notNull(),status:text('status').notNull()},t=>[uniqueIndex('idx_friend_pair').on(t.a,t.b)]);
 export const socialLimits=sqliteTable('social_limits',{key:text('key').primaryKey(),count:integer('count').notNull(),window:integer('window').notNull()});

@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 const base='http://127.0.0.1:5180',owner=`test-${crypto.randomUUID()}`,other=`other-${crypto.randomUUID()}`;
-async function req(path,method='GET',body,identity=owner){const r=await fetch(base+path,{method,headers:{'Content-Type':'application/json','Origin':base,...(identity?{'oai-authenticated-user-id':identity,'oai-authenticated-user-email':'test@sites.test'}:{})},body:body===undefined?undefined:JSON.stringify(body)});return {status:r.status,body:await r.json()};}
+async function req(path,method='GET',body,identity=owner){const r=await fetch(base+path,{method,headers:{'Content-Type':'application/json','Origin':base,...(identity?{'x-stackd-test-identity':identity}:{})},body:body===undefined?undefined:JSON.stringify(body)});return {status:r.status,body:await r.json()};}
 function game(){return {id:crypto.randomUUID(),revision:0,title:'Disposable integration test',mode:'group',venue:'Test table',game:'Holdem',stakes:'10/20',notes:'',currency:'USD',start:'2026-01-01T23:00:00.000Z',end:null,status:'active',players:[{id:crypto.randomUUID(),name:'Host',isSelf:true,cashout:null,entries:[{id:crypto.randomUUID(),kind:'buyin',amount:200000,at:'2026-01-01T23:00:00.000Z'}]},{id:crypto.randomUUID(),name:'Guest',isSelf:false,cashout:null,entries:[{id:crypto.randomUUID(),kind:'buyin',amount:200000,at:'2026-01-01T23:00:00.000Z'}]}]};}
 assert.equal((await req('/api/ledger','GET',undefined,null)).status,401,'anonymous access');
+assert.equal((await fetch(base+'/api/ledger',{headers:{'oai-authenticated-user-id':owner,'oai-authenticated-user-email':'forged@example.com'}})).status,401,'forged Sites identity headers grant nothing');
 assert.equal((await req('/api/settings','PUT',{name:'Tester',currency:'USD'})).status,200,'profile saved');
 let s=game(),op=crypto.randomUUID();
 let r=await req('/api/sessions','POST',{session:s,operationId:op});assert.equal(r.status,200,JSON.stringify(r));s=r.body.sessions[0];assert.equal(s.players.length,2);assert.equal(s.revision,1);
