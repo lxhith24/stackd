@@ -4,17 +4,18 @@ This guide describes the application shipped as version **1.0.0**. Start with th
 
 ## Architecture and request flow
 
-Stackd is a React/TypeScript application using Vinext, Vite, Next.js-style App Router files, and a Cloudflare Worker backend. Cloudflare D1 stores the ledger and social data. OpenAI Sites provides hosting and ChatGPT sign-in. Tailwind/custom CSS, shadcn/Radix components, Lucide, and Recharts provide the interface.
+Stackd is a React/TypeScript application using Vinext, Vite, Next.js-style App Router files, and a Cloudflare Worker backend. Cloudflare D1 stores the ledger and social data. The Worker is deployed to its own Cloudflare account at https://stakd.pro, and Better Auth provides Google sign-in. Tailwind/custom CSS, shadcn/Radix components, Lucide, and Recharts provide the interface.
 
 ```text
-Browser → Sites authentication dispatcher → Worker route
-                                          → identity/origin checks
+Browser → Worker route (https://stakd.pro)
+                                          → Better Auth session cookie → Stackd account
+                                          → origin checks
                                           → input + domain validation
                                           → D1 queries/atomic batch
                                           → viewer-specific JSON → React UI
 ```
 
-The production dispatcher is essential: `app/chatgpt-auth.ts` reads trusted identity headers supplied by Sites. The application does not independently verify a password or OAuth token. Hosting the raw Worker publicly without an equivalent authenticated gateway would make these headers forgeable. Moving to another host requires implementing and validating a replacement authentication boundary first.
+Identity comes only from the Better Auth session cookie, verified against the `session` table in D1. `app/auth.ts` maps the Better Auth user to a Stackd account: by `accounts.user_id`, else once by a Google-verified email matching a hand-mapped `accounts.email` that has no user yet, else a new account. Account ids from the ChatGPT Sites era are unchanged. No request header is trusted for identity, except `x-stackd-test-identity` when `ALLOW_TEST_IDENTITY=1` is set for local tests (never in production).
 
 Drizzle defines the schema and generates migrations. Most application persistence uses D1 prepared SQL directly in `db/ledger.ts` and `db/social.ts`; `db/index.ts` also exposes a Drizzle adapter.
 
@@ -27,7 +28,8 @@ Drizzle defines the schema and generates migrations. Most application persistenc
 | `app/friends-panel.tsx` | Friends tab, shared friends state, requests and session roster |
 | `app/join/[token]/` | Invite landing page, sign-in return path, explicit join action |
 | `app/api/` | HTTP endpoints; thin validation/authorization wrappers |
-| `app/chatgpt-auth.ts` | Trusted identity decoding and safe relative authentication redirects |
+| `app/auth.ts`, `lib/auth.ts`, `lib/auth-client.ts` | Better Auth setup, session-to-account resolution, sign-in/out client |
+| `db/auth-schema.ts` | Better Auth `user`, `session`, `account`, `verification` tables |
 | `lib/poker.ts` | Zod schemas, money parsing, results, date validation, CSV exports |
 | `lib/api.ts`, `lib/errors.ts` | Identity/origin checks, JSON parsing, private responses and HTTP errors |
 | `db/ledger.ts` | Owner/member reads, host writes, concurrency and idempotency |
@@ -35,33 +37,31 @@ Drizzle defines the schema and generates migrations. Most application persistenc
 | `db/schema.ts`, `drizzle/` | Schema declarations and ordered SQL migration history |
 | `app/globals.css`, `components/ui/` | App styles and reusable components |
 | `tests/` | Calculation and localhost API integration checks |
-| `vite.config.ts`, `build/`, `scripts/` | Framework, Worker, Sites and local-preview integration |
-| `.openai/hosting.json` | Existing Sites project identity and storage bindings |
+| `vite.config.ts`, `build/worker.ts`, `wrangler.jsonc` | Framework, Worker entry, D1 binding, custom domain |
+| `scripts/seed-from-export.mjs` | One-off import of the ChatGPT Sites export into the new D1 |
 
-The main UI is currently concentrated in `app/ledger-app.tsx`. Put reusable domain rules in `lib/poker.ts` and enforce permissions in backend functions, even when controls are hidden in the UI. The `examples/` and connector support files are starter infrastructure; the core ledger has no external connector dependency.
+The main UI is currently concentrated in `app/ledger-app.tsx`. Put reusable domain rules in `lib/poker.ts` and enforce permissions in backend functions, even when controls are hidden in the UI. The `examples/` folder is starter infrastructure.
 
 ## First local run
 
-Use Node **22.13 or newer** and npm. A clean checkout defaults to the portable execution profile. No production database export or real ChatGPT credentials are needed for local development.
+Use Node **22.13 or newer** and npm. No production database export is needed for local development. Create `.dev.vars` in the repo root (gitignored):
+
+```
+BETTER_AUTH_SECRET=<any long random string>
+BETTER_AUTH_URL=http://localhost:5173
+GOOGLE_CLIENT_ID=<OAuth client id>
+GOOGLE_CLIENT_SECRET=<OAuth client secret>
+```
 
 ```bash
 npm ci
-npm run build
-```
-
-The build produces `dist/server/wrangler.json`, needed for local database commands. On a fresh local database, apply both migrations in this order:
-
-```bash
-node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0000_massive_the_anarchist.sql
-node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0001_nebulous_pandemic.sql
+npm run db:migrate:local
 npm run dev
 ```
 
-Open the localhost URL printed by the server, normally `http://127.0.0.1:5173`. The portable preview provides a mock signed-in account. Local D1 state persists in `.wrangler/state`; it is separate from production.
+Open http://localhost:5173 and continue with Google (the OAuth client needs `http://localhost:5173/api/auth/callback/google` as a redirect URI). Local D1 state persists in `.wrangler/state`; it is separate from production. `npm run db:migrate:local` uses Wrangler's migration tracking, so it only applies migrations not yet applied.
 
-These direct SQL commands do not maintain a migration-applied ledger. Run each file once against a given local database; rerunning can produce “table/column already exists.” When a new migration is added, apply only that new file to an existing local database.
-
-The `DB` binding and placeholder local database ID are configured in `vite.config.ts`. Sites injects production bindings at deployment. `.sites-runtime/` contains ignored tool state, not application source. For file-watching issues in a sandbox, `CHOKIDAR_USEPOLLING=true npm run dev` enables polling.
+The `DB` binding, production `database_id`, custom domain and `BETTER_AUTH_URL` are configured in `wrangler.jsonc`. The Cloudflare Vite plugin reads it and emits `dist/server/wrangler.json` at build time.
 
 ## Data model
 
@@ -160,7 +160,7 @@ node tests/api.test.mjs
 node --experimental-strip-types tests/social-api.test.mjs
 ```
 
-The tests target only `127.0.0.1:5180`, use disposable user identities, and exercise the local Worker with synthetic trusted headers. They cover ownership, concurrency, invitations, friend acceptance, participant privacy, date-only results and throttling. This does not replace checking a real hosted ChatGPT sign-in/return-to-invite flow. Test cleanup removes created sessions; some basic API-test profile/account fixtures may remain in local storage.
+The tests target only `127.0.0.1:5180`, use disposable user identities, and exercise the local Worker with the `x-stackd-test-identity` header, which requires `ALLOW_TEST_IDENTITY=1` in `.dev.vars`. They also check that forged ChatGPT Sites headers grant nothing. They cover ownership, concurrency, invitations, friend acceptance, participant privacy, date-only results and throttling. This does not replace checking a real Google sign-in and return-to-invite flow. Test cleanup removes created sessions; some basic API-test profile/account fixtures may remain in local storage.
 
 For UI changes, check phone and desktop widths, form defaults and labels, keyboard navigation, loading/error states and existing-session editing. For permission changes, exercise host, member, outsider and anonymous identities. Never rely solely on hidden buttons to enforce access.
 
@@ -168,23 +168,28 @@ For UI changes, check phone and desktop widths, form defaults and labels, keyboa
 
 1. Update `db/schema.ts`.
 2. Run `npm run db:generate` and review the SQL and Drizzle metadata.
-3. Apply the new SQL once to the local database and exercise both existing and new records.
+3. Run `npm run db:migrate:local` and exercise both existing and new records.
 4. Keep old applied migration files unchanged. Commit the schema, new migration and metadata together.
 
-GitHub stores source; pushing a commit does not automatically deploy this application. No GitHub deployment workflow is configured. The existing live application is published through the Sites workflow: build/package the exact source commit, synchronize it to the Site source repository, save a version and deploy it. Sites applies production migrations on publication.
+Deploy from a checkout with Cloudflare credentials (`npx wrangler login`):
 
-`.openai/hosting.json` identifies the existing Stackd Site. Preserve it when maintaining that Site. If making a separate deployment, register/configure a new project with its own bindings and authentication. The GitHub release checkout and Sites checkout are separate; changes must be synchronized deliberately before publication.
+```bash
+npm run db:migrate:remote
+npm run build && npm run deploy
+```
+
+Apply migrations before deploying code that needs them. Secrets (`BETTER_AUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`) are set with `npx wrangler secret put`; never set `ALLOW_TEST_IDENTITY` in production (`npx wrangler secret list` should not show it). Roll back code with `npx wrangler rollback`; restore data with D1 Time Travel. The old ChatGPT Sites deployment is described in git history before the move to Cloudflare.
 
 Version metadata is in `package.json` and the root package entry in `package-lock.json`. Keep these and the README consistent. Tag the final release commit `v1.0.0` after documentation and code are ready; use a new version for subsequent published releases.
 
 ## Troubleshooting and repository hygiene
 
 - **Missing table/column:** check that both initial migrations and any later migrations were applied to the same `.wrangler/state` directory used by the server.
-- **Missing `DB` binding:** inspect `vite.config.ts`, `.openai/hosting.json`, and the generated Worker configuration.
+- **Missing `DB` binding:** inspect `wrangler.jsonc` and the generated `dist/server/wrangler.json`.
 - **403 on a local mutation:** include a matching `Origin`; do not disable this check to make a test pass.
-- **401 after deployment:** inspect the Sites sign-in/dispatcher path and return URL. Do not accept client-supplied identity as a workaround.
+- **401 after deployment:** check the Better Auth secrets, `BETTER_AUTH_URL`, and the Google OAuth redirect URI. Do not accept client-supplied identity as a workaround.
 - **409 while saving:** reload the latest session, then reapply the intended edit. Another save or invite join may have changed its revision.
 - **Currency appears fixed:** hosted saved sessions prevent currency changes; no automatic conversion exists.
-- **Local sign-in differs from production:** the development mock is intentional; hosted authentication must be tested separately.
+- **Signed in but an old ledger is missing:** the account's `accounts.email` must match the Google email exactly, and `accounts.user_id` must still be empty for the first sign-in to link it.
 
 The repository excludes dependencies, build output, environment files, local databases, credentials and compiler caches. Commit lockfiles, source and migrations. Do not commit real player records, API tokens, private keys or production database exports. CSV output neutralizes spreadsheet formula prefixes; preserve that protection when modifying exports.

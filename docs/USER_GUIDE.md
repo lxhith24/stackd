@@ -1,12 +1,12 @@
 # Stackd v1 — user guide
 
-[Open Stackd](https://stackd.stable-ox-2933.chatgpt.site/)
+[Open Stackd](https://stakd.pro/)
 
 Stackd keeps track of poker sessions, buy-ins, rebuys and results. You can record your own games or host a table for friends and guests. Amounts are entered manually; Stackd does not receive money, verify bank transfers or send payouts.
 
 ## Get started
 
-1. Open Stackd and select **Sign in with ChatGPT**.
+1. Open Stackd and select **Continue with Google**.
 2. Sign in with the account you want to use for your poker history. Use that same account on other devices.
 3. If the setup screen appears, enter your player name. **INR** is selected by default.
 4. Select **Create my ledger**.
@@ -77,7 +77,7 @@ Anyone with the link can sign in and join while the session is active. **Replace
 ### Player: join an invitation
 
 1. Open the host’s link.
-2. If prompted, select **Sign in with ChatGPT**. After signing in, you return to the invitation.
+2. If prompted, select **Continue with Google**. After signing in, you return to the invitation.
 3. Check the session title and host, then select **Join session**.
 4. The session opens and appears in your **Sessions** tab.
 
@@ -154,7 +154,7 @@ Exports and copied summaries include only the records available to your account:
 
 In **Settings**, change your name and select **Save preferences**. Currency selection is disabled in the interface while you have saved sessions. Stackd does not convert existing amounts between currencies.
 
-Use the same ChatGPT account to see your records on another phone or computer. Saved records are stored online and do not depend on the host’s laptop staying on. Internet access is required to save; wait for the saved confirmation before closing a form. Reloading or closing a form discards unsaved edits.
+Use the same Google account to see your records on another phone or computer. Saved records are stored online and do not depend on the host’s laptop staying on. Internet access is required to save; wait for the saved confirmation before closing a form. Reloading or closing a form discards unsaved edits.
 
 Use **Sign out** in Settings when finished on a shared device.
 

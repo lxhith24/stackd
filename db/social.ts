@@ -1,20 +1,47 @@
 import { HttpError } from '../lib/errors';
 
 export type Account = { id: string; name: string; code: string };
+export type SignedInIdentity = { authUserId: string; email: string; emailVerified: boolean; name: string };
+
+/** Resolve the Stackd account for a Better Auth user, linking or creating it on first sign-in.
+ *  accounts.id never changes: existing ledgers keep their original (ChatGPT-era) ids. */
+export async function accountForIdentity(db: D1Database, who: SignedInIdentity): Promise<Account> {
+  const linked = await db.prepare('SELECT id,name,code FROM accounts WHERE user_id=?').bind(who.authUserId).first<Account>();
+  if (linked) return linked;
+  const email = who.email.trim().toLowerCase();
+  if (who.emailVerified && email) {
+    // Only a Google-verified email can claim a hand-mapped, still-unclaimed account.
+    await db.prepare('UPDATE accounts SET user_id=? WHERE lower(email)=? AND user_id IS NULL').bind(who.authUserId, email).run();
+    const claimed = await db.prepare('SELECT id,name,code FROM accounts WHERE user_id=?').bind(who.authUserId).first<Account>();
+    if (claimed) return claimed;
+  }
+  return createAccount(db, crypto.randomUUID(), who.name, { userId: who.authUserId, email: who.emailVerified && email ? email : null });
+}
+
+/** Ensure an account row exists for a known account id (local test identities only). */
 export async function ensureAccount(db: D1Database, id: string, name: string): Promise<Account> {
-  const existing = await db.prepare('SELECT * FROM accounts WHERE id=?').bind(id).first<Account>();
+  const existing = await db.prepare('SELECT id,name,code FROM accounts WHERE id=?').bind(id).first<Account>();
   if (existing) return existing;
+  return createAccount(db, id, name, { userId: null, email: null });
+}
+
+async function createAccount(db: D1Database, id: string, name: string, link: { userId: string | null; email: string | null }): Promise<Account> {
+  const display = name.slice(0, 60) || 'Player';
+  // Look up by user_id when linking so simultaneous first sign-ins converge on one row.
+  const find = () => link.userId
+    ? db.prepare('SELECT id,name,code FROM accounts WHERE user_id=?').bind(link.userId).first<Account>()
+    : db.prepare('SELECT id,name,code FROM accounts WHERE id=?').bind(id).first<Account>();
   // Uniqueness is enforced in the database, including simultaneous first sign-ins.
   for (let attempt = 0; attempt < 32; attempt++) {
     const code = String(crypto.getRandomValues(new Uint32Array(1))[0] % 10000).padStart(4, '0');
-    await db.prepare('INSERT OR IGNORE INTO accounts(id,name,code) VALUES(?,?,?)').bind(id, name.slice(0, 60) || 'Player', code).run();
-    const account = await db.prepare('SELECT * FROM accounts WHERE id=?').bind(id).first<Account>();
+    await db.prepare('INSERT OR IGNORE INTO accounts(id,name,code,user_id,email) VALUES(?,?,?,?,?)').bind(id, display, code, link.userId, link.email).run();
+    const account = await find();
     if (account) return account;
   }
   await db.prepare(`WITH RECURSIVE codes(n) AS (SELECT 0 UNION ALL SELECT n+1 FROM codes WHERE n<9999)
-    INSERT OR IGNORE INTO accounts(id,name,code) SELECT ?,?,printf('%04d',n) FROM codes
-    WHERE NOT EXISTS(SELECT 1 FROM accounts WHERE code=printf('%04d',n)) LIMIT 1`).bind(id,name.slice(0,60)||'Player').run();
-  const account = await db.prepare('SELECT * FROM accounts WHERE id=?').bind(id).first<Account>();
+    INSERT OR IGNORE INTO accounts(id,name,code,user_id,email) SELECT ?,?,printf('%04d',n),?,? FROM codes
+    WHERE NOT EXISTS(SELECT 1 FROM accounts WHERE code=printf('%04d',n)) LIMIT 1`).bind(id, display, link.userId, link.email).run();
+  const account = await find();
   if (!account) throw new HttpError(503, 'All four-digit friend codes are assigned. Please contact the host.');
   return account;
 }
@@ -28,7 +55,7 @@ export async function socialLimit(db: D1Database, owner: string, action: string,
 }
 
 export async function friends(db: D1Database, owner: string) {
-  const me = await db.prepare('SELECT * FROM accounts WHERE id=?').bind(owner).first<Account>();
+  const me = await db.prepare('SELECT id,name,code FROM accounts WHERE id=?').bind(owner).first<Account>();
   const list = await db.prepare(`SELECT f.id,f.status,f.requested_by AS requestedBy,a.id AS accountId,a.name,a.code
     FROM friendships f JOIN accounts a ON a.id=CASE WHEN f.a=? THEN f.b ELSE f.a END
     WHERE f.a=? OR f.b=? ORDER BY a.name`).bind(owner,owner,owner).all();
