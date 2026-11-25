@@ -14,10 +14,10 @@ See the [developer guide](docs/DEVELOPMENT.md) for setup, architecture, the data
 
 ## Features
 
-- ChatGPT sign-in and durable cloud records, available across devices with the same account.
+- Google sign-in and durable cloud records, available across devices with the same account.
 - Personal or group sessions, one active hosted session at a time, and historical entry.
 - A dedicated Friends tab with unique four-digit friend codes, friend lists and requests, plus adding accepted friends to a group.
-- Shareable group invite links with ChatGPT sign-in and explicit joining. Friendship is optional for invite joins.
+- Shareable group invite links with Google sign-in and explicit joining. Friendship is optional for invite joins.
 - Participants see only their own amounts and registered player names; only the host can edit.
 - Start date is required; exact start/end times are optional. Rebuy times are recorded automatically.
 - Guest names, one player marked as you, individual buy-ins/rebuys, and cash-outs including zero.
@@ -34,22 +34,31 @@ Four-digit friend codes are stored as strings (including leading zeros), are imm
 
 ## Stack and authentication
 
-React 19, TypeScript, Vite/Vinext, Tailwind, Shadcn/Radix components, Recharts, Cloudflare D1, and Sites-hosted ChatGPT authentication. The initial Supabase recommendation was replaced with platform storage/authentication to deliver a working private app without external credentials.
+React 19, TypeScript, Vite/Vinext, Tailwind, Shadcn/Radix components, Recharts, Cloudflare Workers and D1, and [Better Auth](https://www.better-auth.com/) with Google sign-in. Stackd runs on its own Cloudflare account at https://stakd.pro.
 
-Sites authenticates requests and forwards trusted user identity to the Worker. All data reads/writes check that identity and session ownership. Do not expose the raw Worker directly to the public: the authenticated Sites dispatcher is the production trust boundary. The portable development server mocks sign-in only on loopback; mock authentication is excluded from production.
+Better Auth stores users and sessions in the same D1 database and sets an HTTP-only session cookie. `app/auth.ts` resolves the signed-in Better Auth user to a Stackd account (`accounts.id`): first by `accounts.user_id`, then, once only, by a Google-verified email that matches a hand-mapped `accounts.email` with no user linked yet, and otherwise by creating a new account. Account ids from the ChatGPT Sites era are kept unchanged, so no ledger rows are rewritten. Request headers never carry identity in production.
 
 ## Local development
 
-Node 22.13+ is required. Run `npm ci` and `npm run dev`. Open the exact localhost URL the server prints. The local sign-in link uses the starter's mock account.
-
-For a fresh local database, first run `npm run build`, then:
+Node 22.13+ is required. Create `.dev.vars` (gitignored) in the repo root:
 
 ```
-node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0000_massive_the_anarchist.sql
-node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0001_nebulous_pandemic.sql
+BETTER_AUTH_SECRET=<any long random string>
+BETTER_AUTH_URL=http://localhost:5173
+GOOGLE_CLIENT_ID=<OAuth client id>
+GOOGLE_CLIENT_SECRET=<OAuth client secret>
 ```
 
-Apply a migration once per database. Production migrations are applied by Sites on publication. Never edit an applied migration; generate a new migration after schema changes with `npm run db:generate`.
+Then run `npm ci`, `npm run db:migrate:local` and `npm run dev`, and open http://localhost:5173. The Google OAuth client needs `http://localhost:5173/api/auth/callback/google` as a redirect URI.
+
+## Deployment
+
+```
+npm run db:migrate:remote   # apply new migrations to the production D1
+npm run build && npm run deploy
+```
+
+Secrets are set once with `npx wrangler secret put BETTER_AUTH_SECRET` (and `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`). Never set `ALLOW_TEST_IDENTITY` in production.
 
 ## Validation
 
@@ -59,7 +68,7 @@ node --experimental-strip-types --test tests/poker.test.mjs
 npm run build
 ```
 
-For API integration checks, run `npm start -- --port 5180`, then `node tests/api.test.mjs`. These checks only target 127.0.0.1:5180, use randomly generated test owners and remove their test sessions. The raw local Worker accepts trusted identity headers to exercise multiple users; production relies on Sites to authenticate and inject those headers.
+For API integration checks, add `ALLOW_TEST_IDENTITY=1` to `.dev.vars`, run `npm run build`, `npm run db:migrate:local`, `npm start -- --port 5180`, then `node tests/api.test.mjs` and `node --experimental-strip-types tests/social-api.test.mjs`. These checks only target 127.0.0.1:5180, use randomly generated test accounts through the `x-stackd-test-identity` header (honoured only when `ALLOW_TEST_IDENTITY=1`), and remove their test sessions. They also confirm that forged ChatGPT Sites identity headers grant nothing.
 
 ## Data integrity
 
@@ -75,4 +84,4 @@ Exports include all players. CSV formula prefixes are neutralized. User data is 
 
 ## Multi-user validation
 
-Run `node --experimental-strip-types --test tests/poker.test.mjs` for ledger calculations. Build, apply the SQL migrations to the local database, start the built Worker on 127.0.0.1:5180, then run `node tests/api.test.mjs` and `node --experimental-strip-types tests/social-api.test.mjs`. These use disposable identities only on localhost. They cover cross-account access, participant privacy, invite sign-in return paths, concurrent joins, stale host saves, friend acceptance, membership revocation, link replacement, completed sessions, rate limiting and date-only results. Production migrations are applied by Sites on publication.
+Run `node --experimental-strip-types --test tests/poker.test.mjs` for ledger calculations. Build, run `npm run db:migrate:local`, start the built Worker on 127.0.0.1:5180, then run `node tests/api.test.mjs` and `node --experimental-strip-types tests/social-api.test.mjs`. These use disposable identities only on localhost. They cover cross-account access, participant privacy, invite sign-in return paths, concurrent joins, stale host saves, friend acceptance, membership revocation, link replacement, completed sessions, rate limiting and date-only results. Production migrations are applied with `npm run db:migrate:remote`.
